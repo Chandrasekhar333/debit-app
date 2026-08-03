@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Statement Ledger</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#23293A">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper: #F6F1E6;
+    --paper-dark: #EDE5D3;
+    --ink: #23293A;
+    --ink-soft: #5B6270;
+    --rule: #D9CDB0;
+    --debit: #B14B2C;
+    --debit-soft: #F2DCCF;
+    --credit: #2F6B57;
+    --credit-soft: #DCEAE2;
+    --brass: #A9823F;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; background: var(--paper); }
+  body{
+    font-family: 'Inter', sans-serif;
+    color: var(--ink);
+    padding: 0 0 60px 0;
+    background-image:
+      linear-gradient(var(--paper) 0px, var(--paper) 100%);
+  }
+  .wrap{ max-width: 720px; margin: 0 auto; padding: 28px 18px 0; }
+
+  /* Header */
+  .stub{
+    border: 1.5px solid var(--ink);
+    border-radius: 10px;
+    padding: 20px 22px;
+    background: var(--paper-dark);
+    position: relative;
+    box-shadow: 4px 4px 0 rgba(35,41,58,0.08);
+  }
+  .stub::before{
+    content:"";
+    position:absolute; left:-1px; right:-1px; top:50%;
+    border-top: 1.5px dashed var(--rule);
+    display: none;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 6px;
+  }
+  h1{
+    font-family:'Fraunces', serif;
+    font-weight: 600;
+    font-size: 28px;
+    margin: 0 0 4px;
+    line-height: 1.15;
+  }
+  .sub{
+    color: var(--ink-soft);
+    font-size: 14.5px;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* Upload */
+  .upload-card{
+    margin-top: 18px;
+    border: 2px dashed var(--rule);
+    border-radius: 10px;
+    padding: 26px 18px;
+    text-align: center;
+    background: #FCFAF3;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .upload-card.drag{ border-color: var(--brass); background: var(--credit-soft); }
+  .upload-card p{ margin: 10px 0 14px; color: var(--ink-soft); font-size: 14px; }
+  .btn{
+    font-family:'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    border: none;
+    border-radius: 7px;
+    padding: 11px 20px;
+    cursor: pointer;
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .btn:active{ transform: translateY(1px); }
+  .btn.ghost{
+    background: transparent;
+    border: 1.5px solid var(--ink);
+    color: var(--ink);
+  }
+  .btn.small{ padding: 6px 12px; font-size: 12.5px; border-radius: 6px; }
+  input[type=file]{ display:none; }
+  #filename{ font-family:'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-soft); margin-top: 8px; }
+
+  #status{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--brass);
+    text-align:center;
+    margin-top: 10px;
+    min-height: 16px;
+  }
+
+  /* Summary */
+  .summary{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .summary .full{ grid-column: 1 / -1; }
+  .figure{
+    border: 1.5px solid var(--ink);
+    border-radius: 10px;
+    padding: 16px 16px 14px;
+    background: var(--paper-dark);
+  }
+  .figure .label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .figure .value{
+    font-family:'Fraunces', serif;
+    font-size: 26px;
+    font-weight: 600;
+  }
+  .figure.debit .value{ color: var(--debit); }
+  .figure.credit .value{ color: var(--credit); }
+  .figure.net .value{ font-size: 30px; }
+  .figure .count{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+
+  /* Filters */
+  .filter-bar{
+    margin-top: 22px;
+    border: 1.5px solid var(--ink);
+    border-radius: 10px;
+    background: #FCFAF3;
+    padding: 14px 16px;
+  }
+  .filter-bar h3{
+    font-family:'Fraunces', serif;
+    font-size: 15px;
+    margin: 0 0 10px;
+  }
+  .filter-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .filter-grid .full{ grid-column: 1 / -1; }
+  .filter-grid label{
+    display:block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 4px;
+  }
+  .filter-grid input, .filter-grid select{
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    padding: 8px 9px;
+    border: 1.5px solid var(--rule);
+    border-radius: 6px;
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .filter-grid input:focus, .filter-grid select:focus{ outline: none; border-color: var(--brass); }
+  .filter-actions{ display:flex; justify-content: space-between; align-items:center; margin-top: 12px; }
+  .filter-count{ font-family:'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink-soft); }
+  .link-btn{
+    background:none; border:none; color: var(--brass); font-family:'Inter',sans-serif;
+    font-size: 12.5px; font-weight:600; cursor:pointer; padding: 4px;
+  }
+
+  /* Bulk toolbar */
+  .bulk-bar{
+    display:flex; align-items:center; gap:10px; flex-wrap: wrap;
+    margin-top: 10px; padding: 9px 10px;
+    background: var(--credit-soft);
+    border: 1px solid var(--credit);
+    border-radius: 7px;
+    font-size: 12.5px;
+  }
+  .bulk-bar .bulk-count{ font-family:'IBM Plex Mono', monospace; font-weight:600; color: var(--ink); margin-right: auto; }
+
+  .row .chk{ width: 16px; height: 16px; accent-color: var(--brass); cursor:pointer; }
+
+  /* Charts */
+  .chart-card{
+    margin-top: 14px;
+    border: 1.5px solid var(--ink);
+    border-radius: 10px;
+    background: #FCFAF3;
+    padding: 16px;
+  }
+  .chart-card h3{
+    font-family:'Fraunces', serif;
+    font-size: 16px;
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .chart-row{ display:flex; gap:14px; flex-wrap: wrap; }
+  .chart-row .chart-card{ flex: 1 1 280px; margin-top:0; }
+
+  /* Ledger table */
+  .ledger{ margin-top: 22px; }
+  .ledger h3{
+    font-family:'Fraunces', serif;
+    font-size: 18px;
+    margin: 0 0 10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .ledger h3 span.count{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    font-weight: 400;
+  }
+  .row{
+    display: grid;
+    grid-template-columns: 22px 60px 1fr 88px 96px 26px;
+    gap: 8px;
+    align-items: center;
+    padding: 9px 4px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 13px;
+  }
+  .row.head{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom: 1.5px solid var(--ink);
+  }
+  .row .date{ font-family:'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink-soft); }
+  .row .desc{
+    background: transparent; border: none; font-family:'Inter',sans-serif;
+    font-size: 13px; color: var(--ink); width: 100%; padding: 3px 2px;
+  }
+  .row .desc:focus{ outline: 1px solid var(--brass); border-radius: 4px; }
+  .toggle{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    border-radius: 5px;
+    padding: 4px 6px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid transparent;
+    user-select: none;
+  }
+  .toggle.debit{ background: var(--debit-soft); color: var(--debit); }
+  .toggle.credit{ background: var(--credit-soft); color: var(--credit); }
+  .amt{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 13px;
+    border: none; background: transparent;
+    text-align: right; width: 100%;
+    color: var(--ink);
+  }
+  .amt:focus{ outline: 1px solid var(--brass); border-radius: 4px; }
+  .del{
+    border: none; background: transparent; color: var(--ink-soft);
+    cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .del:hover{ color: var(--debit); }
+
+  .empty{
+    text-align:center; color: var(--ink-soft); font-size: 13.5px;
+    padding: 30px 10px; font-family:'IBM Plex Mono', monospace;
+  }
+
+  .ledger-actions{ display:flex; gap:10px; margin-top: 14px; }
+  .note{
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+    border-left: 2px solid var(--brass);
+    padding-left: 10px;
+  }
+  .hidden{ display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="stub">
+    <p class="eyebrow">Statement Ledger — self-serve</p>
+    <h1>Upload once, see everything debited and credited.</h1>
+    <p class="sub">Drop in a bank statement PDF. This reads it in your browser, splits transactions into debits and credits, totals them up, and charts your monthly spending — nothing is uploaded anywhere.</p>
+  </div>
+
+  <div class="upload-card" id="dropzone">
+    <div id="uploadPrompt">
+      <p>PDF bank statement (text-based, not a scanned image)</p>
+      <button class="btn" id="pickBtn">Choose PDF</button>
+      <input type="file" id="fileInput" accept="application/pdf">
+    </div>
+    <div id="filename"></div>
+    <div id="status"></div>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="summary">
+      <div class="figure debit">
+        <div class="label">Total Debited</div>
+        <div class="value" id="totalDebit">₹0</div>
+        <div class="count" id="debitCount">0 debits</div>
+      </div>
+      <div class="figure credit">
+        <div class="label">Total Credited</div>
+        <div class="value" id="totalCredit">₹0</div>
+        <div class="count" id="creditCount">0 credits</div>
+      </div>
+      <div class="figure net full">
+        <div class="label">Net (Credited − Debited)</div>
+        <div class="value" id="netValue">₹0</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <h3>Filter &amp; search</h3>
+      <div class="filter-grid">
+        <div class="full">
+          <label>Search description</label>
+          <input type="text" id="fSearch" placeholder="e.g. amazon, rent, phonepe…">
+        </div>
+        <div>
+          <label>Type</label>
+          <select id="fType">
+            <option value="all">All</option>
+            <option value="debit">Debit only</option>
+            <option value="credit">Credit only</option>
+          </select>
+        </div>
+        <div>
+          <label>Sort by</label>
+          <select id="fSort">
+            <option value="date_desc">Date (newest first)</option>
+            <option value="date_asc">Date (oldest first)</option>
+            <option value="amt_desc">Amount (high to low)</option>
+            <option value="amt_asc">Amount (low to high)</option>
+          </select>
+        </div>
+        <div>
+          <label>Date from</label>
+          <input type="date" id="fFrom">
+        </div>
+        <div>
+          <label>Date to</label>
+          <input type="date" id="fTo">
+        </div>
+        <div>
+          <label>Min amount (₹)</label>
+          <input type="number" id="fMin" placeholder="0" min="0">
+        </div>
+        <div>
+          <label>Max amount (₹)</label>
+          <input type="number" id="fMax" placeholder="no limit" min="0">
+        </div>
+      </div>
+      <div class="filter-actions">
+        <span class="filter-count" id="filterCount"></span>
+        <button class="link-btn" id="clearFilters">Clear filters</button>
+      </div>
+    </div>
+
+    <div class="bulk-bar hidden" id="bulkBar">
+      <span class="bulk-count" id="bulkCount">0 selected</span>
+      <button class="btn small ghost" id="bulkDebit">Mark Debit</button>
+      <button class="btn small ghost" id="bulkCredit">Mark Credit</button>
+      <button class="btn small" id="bulkDelete" style="background:var(--debit)">Delete</button>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-card">
+        <h3>Monthly debit vs credit</h3>
+        <canvas id="monthlyChart" height="220"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Overall split</h3>
+        <canvas id="splitChart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="ledger">
+      <h3>Transactions <span class="count" id="rowCount"></span></h3>
+      <div class="row head">
+        <div><input type="checkbox" class="chk" id="selectAll" title="Select all visible"></div>
+        <div>Date</div><div>Description</div><div>Type</div><div style="text-align:right">Amount</div><div></div>
+      </div>
+      <div id="rows"></div>
+      <div id="emptyMsg" class="empty hidden">No transaction-looking rows were detected. Try "Add row" to enter amounts manually, or the PDF may be a scanned image rather than text.</div>
+      <div class="ledger-actions">
+        <button class="btn small ghost" id="addRowBtn">+ Add row</button>
+        <button class="btn small ghost" id="exportBtn">Export CSV</button>
+        <button class="btn small" id="recomputeBtn">Recalculate totals</button>
+      </div>
+    </div>
+
+    <p class="note">Detection is automatic and based on common statement layouts, so double-check a few rows — tap "Debit"/"Credit" to flip a row, or edit the amount directly. Totals and charts update when you hit Recalculate.</p>
+  </div>
+
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+  });
+}
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const pickBtn = document.getElementById('pickBtn');
+const statusEl = document.getElementById('status');
+const filenameEl = document.getElementById('filename');
+const resultsEl = document.getElementById('results');
+const rowsEl = document.getElementById('rows');
+const rowCountEl = document.getElementById('rowCount');
+const emptyMsg = document.getElementById('emptyMsg');
+
+let txns = []; // {id, date, desc, type, amount}
+let idCounter = 0;
+let monthlyChartInst = null, splitChartInst = null;
+let selectedIds = new Set();
+let filters = { search: '', type: 'all', sort: 'date_desc', from: '', to: '', min: '', max: '' };
+
+pickBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+['dragover','dragenter'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if(f && f.type === 'application/pdf') handleFile(f);
+});
+
+function setStatus(msg){ statusEl.textContent = msg || ''; }
+
+async function handleFile(file){
+  filenameEl.textContent = file.name;
+  setStatus('Reading PDF…');
+  txns = []; idCounter = 0;
+  try{
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let lines = [];
+    for(let p = 1; p <= pdf.numPages; p++){
+      setStatus(`Extracting page ${p} of ${pdf.numPages}…`);
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const rowsByY = {};
+      content.items.forEach(item => {
+        const y = Math.round(item.transform[5] / 2) * 2;
+        if(!rowsByY[y]) rowsByY[y] = [];
+        rowsByY[y].push({ x: item.transform[4], str: item.str });
+      });
+      const ys = Object.keys(rowsByY).map(Number).sort((a,b) => b - a);
+      ys.forEach(y => {
+        const text = rowsByY[y].sort((a,b) => a.x - b.x).map(r => r.str).join(' ').replace(/\s+/g,' ').trim();
+        if(text) lines.push(text);
+      });
+    }
+    setStatus('Detecting transactions…');
+    txns = parseLines(lines);
+    setStatus(txns.length ? `Found ${txns.length} likely transactions. Review below.` : 'No transactions detected automatically.');
+    renderRows();
+    recompute();
+    resultsEl.classList.remove('hidden');
+  }catch(err){
+    console.error(err);
+    setStatus('Could not read that PDF. It may be a scanned/image-only statement.');
+  }
+}
+
+const DATE_RE = /(\d{1,2}[\/\-\.](?:\d{1,2}|[A-Za-z]{3,9})[\/\-\.]\d{2,4})/;
+const AMT_RE = /\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?|\d+\.\d{1,2}/g;
+
+function parseLines(lines){
+  const out = [];
+  lines.forEach(line => {
+    const dm = line.match(DATE_RE);
+    if(!dm) return;
+    const rawAmts = (line.match(AMT_RE) || []).filter(a => a.replace(/[,\.]/g,'').length >= 2);
+    if(rawAmts.length === 0) return;
+
+    let type = 'unknown';
+    if(/\bdr\b|debit(ed)?|withdraw/i.test(line)) type = 'debit';
+    if(/\bcr\b|credit(ed)?|deposit/i.test(line)) type = (type === 'debit') ? 'unknown' : 'credit';
+
+    let desc = line.replace(dm[0], '');
+    rawAmts.forEach(a => { desc = desc.replace(a, ''); });
+    desc = desc.replace(/\b(dr|cr)\b/gi, '').replace(/\s{2,}/g,' ').trim();
+    if(!desc) desc = '(no description)';
+
+    // Assume last number is running balance if 2+ numbers present; the transaction amount is the one before it.
+    const amountStr = rawAmts.length >= 2 ? rawAmts[rawAmts.length - 2] : rawAmts[rawAmts.length - 1];
+    const amount = parseFloat(amountStr.replace(/,/g,''));
+    if(isNaN(amount) || amount <= 0) return;
+
+    out.push({ id: idCounter++, date: dm[0], desc, type, amount });
+  });
+  return out;
+}
+
+function getFiltered(){
+  let list = txns.slice();
+
+  if(filters.search.trim()){
+    const q = filters.search.trim().toLowerCase();
+    list = list.filter(t => t.desc.toLowerCase().includes(q));
+  }
+  if(filters.type !== 'all'){
+    list = list.filter(t => t.type === filters.type);
+  }
+  if(filters.from){
+    const from = new Date(filters.from);
+    list = list.filter(t => { const d = parseDateLoose(t.date); return !d || d >= from; });
+  }
+  if(filters.to){
+    const to = new Date(filters.to);
+    list = list.filter(t => { const d = parseDateLoose(t.date); return !d || d <= to; });
+  }
+  if(filters.min !== ''){
+    list = list.filter(t => t.amount >= parseFloat(filters.min));
+  }
+  if(filters.max !== ''){
+    list = list.filter(t => t.amount <= parseFloat(filters.max));
+  }
+
+  list.sort((a,b) => {
+    if(filters.sort === 'amt_desc') return b.amount - a.amount;
+    if(filters.sort === 'amt_asc') return a.amount - b.amount;
+    const da = parseDateLoose(a.date), db = parseDateLoose(b.date);
+    const ta = da ? da.getTime() : -Infinity, tb = db ? db.getTime() : -Infinity;
+    return filters.sort === 'date_asc' ? ta - tb : tb - ta;
+  });
+
+  return list;
+}
+
+function renderRows(){
+  const filtered = getFiltered();
+  rowsEl.innerHTML = '';
+  emptyMsg.classList.toggle('hidden', filtered.length !== 0);
+  rowCountEl.textContent = txns.length ? `(${txns.length})` : '';
+  document.getElementById('filterCount').textContent =
+    txns.length ? `Showing ${filtered.length} of ${txns.length} transactions` : '';
+
+  filtered.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.dataset.id = t.id;
+
+    const typeLabel = t.type === 'debit' ? 'Debit' : (t.type === 'credit' ? 'Credit' : 'Debit?');
+    const typeClass = t.type === 'credit' ? 'credit' : 'debit';
+
+    row.innerHTML = `
+      <input type="checkbox" class="chk row-chk" ${selectedIds.has(t.id) ? 'checked' : ''}>
+      <div class="date">${escapeHtml(t.date)}</div>
+      <input class="desc" value="${escapeAttr(t.desc)}">
+      <div class="toggle ${typeClass}" data-action="toggle">${typeLabel}</div>
+      <input class="amt" value="${t.amount.toFixed(2)}">
+      <button class="del" data-action="del" title="Remove row">✕</button>
+    `;
+    rowsEl.appendChild(row);
+  });
+  updateBulkBar();
+}
+
+function updateBulkBar(){
+  const bar = document.getElementById('bulkBar');
+  const count = selectedIds.size;
+  document.getElementById('bulkCount').textContent = `${count} selected`;
+  bar.classList.toggle('hidden', count === 0);
+  const visibleIds = new Set(getFiltered().map(t => t.id));
+  const allVisibleSelected = visibleIds.size > 0 && [...visibleIds].every(id => selectedIds.has(id));
+  document.getElementById('selectAll').checked = allVisibleSelected;
+}
+
+rowsEl.addEventListener('click', e => {
+  const row = e.target.closest('.row');
+  if(!row) return;
+  const id = Number(row.dataset.id);
+  const t = txns.find(x => x.id === id);
+  if(!t) return;
+  if(e.target.dataset.action === 'toggle'){
+    t.type = (t.type === 'credit') ? 'debit' : 'credit';
+    renderRows();
+    recompute();
+  }
+  if(e.target.dataset.action === 'del'){
+    txns = txns.filter(x => x.id !== id);
+    selectedIds.delete(id);
+    renderRows();
+    recompute();
+  }
+});
+
+rowsEl.addEventListener('change', e => {
+  const row = e.target.closest('.row');
+  if(!row) return;
+  const id = Number(row.dataset.id);
+  const t = txns.find(x => x.id === id);
+  if(!t) return;
+  if(e.target.classList.contains('desc')) t.desc = e.target.value;
+  if(e.target.classList.contains('amt')){
+    const v = parseFloat(e.target.value.replace(/,/g,''));
+    if(!isNaN(v) && v >= 0) t.amount = v;
+    else e.target.value = t.amount.toFixed(2);
+  }
+  if(e.target.classList.contains('row-chk')){
+    if(e.target.checked) selectedIds.add(id); else selectedIds.delete(id);
+    updateBulkBar();
+  }
+});
+
+document.getElementById('addRowBtn').addEventListener('click', () => {
+  txns.push({ id: idCounter++, date: '—', desc: '', type: 'debit', amount: 0 });
+  renderRows();
+  recompute();
+});
+
+document.getElementById('recomputeBtn').addEventListener('click', () => { renderRows(); recompute(); });
+
+// Filters
+const fSearch = document.getElementById('fSearch');
+const fType = document.getElementById('fType');
+const fSort = document.getElementById('fSort');
+const fFrom = document.getElementById('fFrom');
+const fTo = document.getElementById('fTo');
+const fMin = document.getElementById('fMin');
+const fMax = document.getElementById('fMax');
+
+function applyFiltersFromInputs(){
+  filters = {
+    search: fSearch.value, type: fType.value, sort: fSort.value,
+    from: fFrom.value, to: fTo.value, min: fMin.value, max: fMax.value
+  };
+  renderRows();
+  recompute();
+}
+[fSearch].forEach(el => el.addEventListener('input', applyFiltersFromInputs));
+[fType, fSort, fFrom, fTo, fMin, fMax].forEach(el => el.addEventListener('change', applyFiltersFromInputs));
+
+document.getElementById('clearFilters').addEventListener('click', () => {
+  fSearch.value = ''; fType.value = 'all'; fSort.value = 'date_desc';
+  fFrom.value = ''; fTo.value = ''; fMin.value = ''; fMax.value = '';
+  applyFiltersFromInputs();
+});
+
+// Select all (visible rows only)
+document.getElementById('selectAll').addEventListener('change', e => {
+  const visible = getFiltered();
+  if(e.target.checked) visible.forEach(t => selectedIds.add(t.id));
+  else visible.forEach(t => selectedIds.delete(t.id));
+  renderRows();
+});
+
+// Bulk actions
+document.getElementById('bulkDebit').addEventListener('click', () => {
+  txns.forEach(t => { if(selectedIds.has(t.id)) t.type = 'debit'; });
+  renderRows(); recompute();
+});
+document.getElementById('bulkCredit').addEventListener('click', () => {
+  txns.forEach(t => { if(selectedIds.has(t.id)) t.type = 'credit'; });
+  renderRows(); recompute();
+});
+document.getElementById('bulkDelete').addEventListener('click', () => {
+  txns = txns.filter(t => !selectedIds.has(t.id));
+  selectedIds.clear();
+  renderRows(); recompute();
+});
+
+// Export CSV (respects current filters)
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const list = getFiltered();
+  const rows = [['Date','Description','Type','Amount']];
+  list.forEach(t => rows.push([t.date, t.desc.replace(/"/g,'""'), t.type, t.amount.toFixed(2)]));
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'transactions.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+function inr(n){
+  return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+}
+
+function parseDateLoose(str){
+  if(!str || str === '—') return null;
+  const months = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  let m = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(m){
+    let y = m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3]);
+    return new Date(y, parseInt(m[2]) - 1, parseInt(m[1]));
+  }
+  m = str.match(/^(\d{1,2})[\/\-\.]([A-Za-z]{3,9})[\/\-\.](\d{2,4})$/);
+  if(m){
+    const mi = months[m[2].slice(0,3).toLowerCase()];
+    if(mi === undefined) return null;
+    let y = m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3]);
+    return new Date(y, mi, parseInt(m[1]));
+  }
+  return null;
+}
+
+function recompute(){
+  const active = getFiltered();
+  let totalDebit = 0, totalCredit = 0, debitCount = 0, creditCount = 0;
+  const monthMap = {}; // "Jan 2026" -> {debit, credit, sortKey}
+
+  active.forEach(t => {
+    if(t.type === 'credit'){ totalCredit += t.amount; creditCount++; }
+    else { totalDebit += t.amount; debitCount++; }
+
+    const d = parseDateLoose(t.date);
+    const key = d ? d.toLocaleString('en-IN', { month: 'short', year: 'numeric' }) : 'Undated';
+    const sortKey = d ? d.getFullYear() * 12 + d.getMonth() : 999999;
+    if(!monthMap[key]) monthMap[key] = { debit: 0, credit: 0, sortKey };
+    if(t.type === 'credit') monthMap[key].credit += t.amount;
+    else monthMap[key].debit += t.amount;
+  });
+
+  document.getElementById('totalDebit').textContent = inr(totalDebit);
+  document.getElementById('totalCredit').textContent = inr(totalCredit);
+  document.getElementById('debitCount').textContent = `${debitCount} debit${debitCount === 1 ? '' : 's'}`;
+  document.getElementById('creditCount').textContent = `${creditCount} credit${creditCount === 1 ? '' : 's'}`;
+  const net = totalCredit - totalDebit;
+  const netEl = document.getElementById('netValue');
+  netEl.textContent = (net < 0 ? '−' : '') + inr(Math.abs(net));
+  netEl.style.color = net < 0 ? 'var(--debit)' : 'var(--credit)';
+
+  const months = Object.keys(monthMap).sort((a,b) => monthMap[a].sortKey - monthMap[b].sortKey);
+  const debitData = months.map(m => monthMap[m].debit.toFixed(2));
+  const creditData = months.map(m => monthMap[m].credit.toFixed(2));
+
+  const inkSoft = '#5B6270';
+  const gridColor = '#E4DAC0';
+
+  if(monthlyChartInst) monthlyChartInst.destroy();
+  monthlyChartInst = new Chart(document.getElementById('monthlyChart'), {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [
+        { label: 'Debited', data: debitData, backgroundColor: '#B14B2C', borderRadius: 4 },
+        { label: 'Credited', data: creditData, backgroundColor: '#2F6B57', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } } },
+      scales: {
+        x: { ticks: { font: { family: 'IBM Plex Mono', size: 10 }, color: inkSoft }, grid: { display: false } },
+        y: { ticks: { font: { family: 'IBM Plex Mono', size: 10 }, color: inkSoft }, grid: { color: gridColor } }
+      }
+    }
+  });
+
+  if(splitChartInst) splitChartInst.destroy();
+  splitChartInst = new Chart(document.getElementById('splitChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Debited', 'Credited'],
+      datasets: [{ data: [totalDebit.toFixed(2), totalCredit.toFixed(2)], backgroundColor: ['#B14B2C', '#2F6B57'] }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } } }
+    }
+  });
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+</script>
+</body>
+</html>
